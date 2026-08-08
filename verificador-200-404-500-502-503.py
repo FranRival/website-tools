@@ -6,6 +6,13 @@ import time
 # ============================================================
 # CONFIGURACIÓN
 # ============================================================
+# ============================================================
+# Peticiones por segundo: 2
+# time.sleep(PAUSA)
+# TIMEOUT = 15
+# PAUSA = 0.5
+#PAUSA ALEATORIA -
+# ============================================================
 
 ARCHIVO_ENTRADA = r"C:\ruta\de\tu\archivo.xlsx"
 ARCHIVO_SALIDA = r"C:\ruta\de\tu\archivo_verificado.xlsx"
