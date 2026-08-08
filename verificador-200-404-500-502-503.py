@@ -10,10 +10,7 @@ import time
 ARCHIVO_ENTRADA = r"C:\ruta\de\tu\archivo.xlsx"
 ARCHIVO_SALIDA = r"C:\ruta\de\tu\archivo_verificado.xlsx"
 
-# Tiempo máximo de espera por URL
 TIMEOUT = 15
-
-# Pausa entre peticiones
 PAUSA = 0.1
 
 
@@ -71,30 +68,36 @@ df = pd.read_excel(ARCHIVO_ENTRADA)
 
 
 # ============================================================
-# TOMAR COLUMNA B
+# COMPROBAR QUE EXISTE COLUMNA C
 # ============================================================
 
-if len(df.columns) < 2:
-    print("ERROR: El Excel no tiene una columna B.")
+if len(df.columns) < 3:
+    print("ERROR: El Excel no tiene una columna C.")
     input("\nPresiona ENTER para salir...")
     exit()
 
-columna_b = df.columns[1]
+
+# ============================================================
+# TOMAR SOLAMENTE COLUMNA C
+# ============================================================
+
+columna_c = df.columns[2]
+
+print(f"\nProcesando columna C: {columna_c}")
 
 
 # ============================================================
-# CREAR COLUMNA C
+# VERIFICAR CADA URL
 # ============================================================
 
 resultados = []
 
 total = len(df)
 
-print(f"\nSe encontraron {total} URLs.")
-print("Comenzando verificación...\n")
+print(f"Total de URLs: {total}\n")
 
 
-for numero, url in enumerate(df[columna_b], start=1):
+for numero, url in enumerate(df[columna_c], start=1):
 
     print(f"[{numero}/{total}] {url}")
 
@@ -108,15 +111,19 @@ for numero, url in enumerate(df[columna_b], start=1):
 
 
 # ============================================================
-# GUARDAR RESULTADOS EN COLUMNA C
+# CREAR COLUMNA D
 # ============================================================
 
 df.insert(
-    2,
+    3,
     "HTTP_STATUS",
     resultados
 )
 
+
+# ============================================================
+# GUARDAR
+# ============================================================
 
 df.to_excel(
     ARCHIVO_SALIDA,
@@ -135,11 +142,15 @@ print("========================================")
 print(f"Archivo generado:")
 print(ARCHIVO_SALIDA)
 
-print(f"\nTotal de URLs: {total}")
+print(f"\nTotal procesado: {total}")
 
 print("\nResultados:")
 
-print(df["HTTP_STATUS"].value_counts().to_string())
+print(
+    df["HTTP_STATUS"]
+    .value_counts()
+    .to_string()
+)
 
 print("========================================")
 
