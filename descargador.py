@@ -7,14 +7,14 @@ Descarga videos listados en un archivo Excel (.xlsx).
 Antes de cada descarga verifica el espacio libre en disco; si no alcanza,
 detiene el proceso.
 
-Uso:
-    python descargar_videos.py "C:/ruta/al/archivo.xlsx" --destino "C:/ruta/descargas" --min-gb 2
+Para usarlo: edita las variables en la sección "CONFIGURACIÓN" más abajo
+y luego ejecuta:
+    python descargar_videos.py
 
 Requisitos:
     pip install requests openpyxl pandas
 """
 
-import argparse
 import os
 import re
 import shutil
@@ -24,6 +24,17 @@ from pathlib import Path
 
 import pandas as pd
 import requests
+
+# ============================================================
+# CONFIGURACIÓN — edita estas variables según tu caso
+# ============================================================
+
+RUTA_EXCEL = r"C:\ruta\a\tu\archivo.xlsx"       # Excel con col A = título, col B = URL
+CARPETA_DESCARGA = r"C:\ruta\a\tu\carpeta"      # Carpeta donde se guardarán los videos
+MIN_GB_LIBRES = 2.0                             # Espacio mínimo libre en disco (GB) para continuar
+REINTENTOS_POR_VIDEO = 2                        # Reintentos si falla la descarga de un video
+
+# ============================================================
 
 CHUNK_SIZE = 1024 * 1024  # 1 MB
 TIMEOUT = 30  # segundos para conectar/leer
@@ -119,32 +130,19 @@ def descargar_video(url: str, destino: Path, min_gb: float) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Descargador masivo de videos desde un Excel.")
-    parser.add_argument("archivo_excel", help="Ruta al archivo .xlsx (col A = título, col B = URL)")
-    parser.add_argument("carpeta_descarga", help="Carpeta donde guardar los videos descargados")
-    parser.add_argument(
-        "--min-gb", type=float, default=2.0,
-        help="Espacio mínimo libre en disco (GB) requerido para continuar (default: 2.0)"
-    )
-    parser.add_argument(
-        "--reintentos", type=int, default=2,
-        help="Número de reintentos por URL si falla la descarga"
-    )
-    args = parser.parse_args()
-
-    ruta_excel = Path(args.archivo_excel)
+    ruta_excel = Path(RUTA_EXCEL)
     if not ruta_excel.exists():
         print(f"No se encontró el archivo Excel: {ruta_excel}")
         sys.exit(1)
 
-    carpeta_destino = Path(args.carpeta_descarga)
+    carpeta_destino = Path(CARPETA_DESCARGA)
     carpeta_destino.mkdir(parents=True, exist_ok=True)
 
     filas = leer_filas_excel(ruta_excel)
 
     print(f"Se encontraron {len(filas)} filas con URL en {ruta_excel}")
     print(f"Espacio libre actual: {espacio_libre_gb(carpeta_destino):.2f} GB")
-    print(f"Mínimo requerido para continuar: {args.min_gb} GB\n")
+    print(f"Mínimo requerido para continuar: {MIN_GB_LIBRES} GB\n")
 
     exitosos = 0
     fallidos = 0
@@ -152,7 +150,7 @@ def main():
 
     for i, (titulo, url) in enumerate(filas, start=1):
         libre = espacio_libre_gb(carpeta_destino)
-        if libre < args.min_gb:
+        if libre < MIN_GB_LIBRES:
             print(f"\n⚠ Espacio en disco insuficiente ({libre:.2f} GB libres). "
                   f"Deteniendo el proceso en la fila {i}/{len(filas)}.")
             break
@@ -168,14 +166,14 @@ def main():
         print(f"[{i}/{len(filas)}] Descargando: {url}  ->  {nombre}")
 
         resultado = None
-        for intento in range(1, args.reintentos + 2):
-            resultado = descargar_video(url, destino_archivo, args.min_gb)
+        for intento in range(1, REINTENTOS_POR_VIDEO + 2):
+            resultado = descargar_video(url, destino_archivo, MIN_GB_LIBRES)
             if resultado is True:
                 break
             if resultado is None:
                 # Sin espacio: no reintentar, cortar todo
                 break
-            print(f"  Reintentando ({intento}/{args.reintentos})...")
+            print(f"  Reintentando ({intento}/{REINTENTOS_POR_VIDEO})...")
             time.sleep(2)
 
         if resultado is True:
