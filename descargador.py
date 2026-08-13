@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
 """
-Descarga videos listados en un archivo .txt (una URL por línea).
+Descarga videos listados en un archivo Excel (.xlsx).
+    Columna A: título del video
+    Columna B: URL del archivo .mp4
+
 Antes de cada descarga verifica el espacio libre en disco; si no alcanza,
 detiene el proceso.
 
 Uso:
-    python descargar_videos.py urls.txt --destino ./videos --min-gb 2
+    python descargar_videos.py "C:/ruta/al/archivo.xlsx" --destino "C:/ruta/descargas" --min-gb 2
 
 Requisitos:
-    pip install requests
+    pip install requests openpyxl pandas
 """
 
 import argparse
 import os
+import re
 import shutil
 import sys
 import time
 from pathlib import Path
-from urllib.parse import urlparse, unquote
 
+import pandas as pd
 import requests
 
 CHUNK_SIZE = 1024 * 1024  # 1 MB
@@ -31,14 +35,41 @@ def espacio_libre_gb(ruta: str) -> float:
     return libre / (1024 ** 3)
 
 
-def nombre_archivo_desde_url(url: str, indice: int) -> str:
-    """Intenta obtener un nombre de archivo razonable a partir de la URL."""
-    ruta = urlparse(url).path
-    nombre = unquote(os.path.basename(ruta))
-    if not nombre or "." not in nombre:
-        # Si la URL no trae un nombre de archivo claro, generamos uno genérico
-        nombre = f"video_{indice:04d}.mp4"
-    return nombre
+CARACTERES_INVALIDOS = r'[\\/:*?"<>|]'
+
+
+def nombre_archivo_desde_titulo(titulo: str, indice: int) -> str:
+    """Genera un nombre de archivo seguro a partir del título (columna A)."""
+    titulo = str(titulo).strip() if titulo is not None else ""
+    if not titulo or titulo.lower() == "nan":
+        titulo = f"video_{indice:04d}"
+    titulo = re.sub(CARACTERES_INVALIDOS, "_", titulo)  # quita caracteres no válidos en nombres de archivo
+    titulo = titulo.strip(" .")  # Windows no permite espacios/puntos al final
+    if not titulo.lower().endswith(".mp4"):
+        titulo += ".mp4"
+    return titulo
+
+
+def leer_filas_excel(ruta_excel: Path):
+    """
+    Lee el Excel y devuelve una lista de tuplas (titulo, url).
+    Columna A = título, columna B = URL. Se ignora la fila de encabezado
+    si la celda B1 no parece una URL.
+    """
+    df = pd.read_excel(ruta_excel, header=None, dtype=str)
+
+    filas = []
+    for _, fila in df.iterrows():
+        titulo = fila[0] if len(fila) > 0 else None
+        url = fila[1] if len(fila) > 1 else None
+        if url is None or str(url).strip().lower() == "nan":
+            continue
+        url = str(url).strip()
+        if not url.lower().startswith(("http://", "https://")):
+            # probablemente es la fila de encabezado (p.ej. "Título" / "URL")
+            continue
+        filas.append((titulo, url))
+    return filas
 
 
 def descargar_video(url: str, destino: Path, min_gb: float) -> bool:
@@ -88,9 +119,9 @@ def descargar_video(url: str, destino: Path, min_gb: float) -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Descargador masivo de videos desde URLs.")
-    parser.add_argument("archivo_urls", help="Ruta al .txt con una URL por línea")
-    parser.add_argument("--destino", default="./videos", help="Carpeta donde guardar los videos")
+    parser = argparse.ArgumentParser(description="Descargador masivo de videos desde un Excel.")
+    parser.add_argument("archivo_excel", help="Ruta al archivo .xlsx (col A = título, col B = URL)")
+    parser.add_argument("carpeta_descarga", help="Carpeta donde guardar los videos descargados")
     parser.add_argument(
         "--min-gb", type=float, default=2.0,
         help="Espacio mínimo libre en disco (GB) requerido para continuar (default: 2.0)"
@@ -101,20 +132,17 @@ def main():
     )
     args = parser.parse_args()
 
-    ruta_urls = Path(args.archivo_urls)
-    if not ruta_urls.exists():
-        print(f"No se encontró el archivo: {ruta_urls}")
+    ruta_excel = Path(args.archivo_excel)
+    if not ruta_excel.exists():
+        print(f"No se encontró el archivo Excel: {ruta_excel}")
         sys.exit(1)
 
-    carpeta_destino = Path(args.destino)
+    carpeta_destino = Path(args.carpeta_descarga)
     carpeta_destino.mkdir(parents=True, exist_ok=True)
 
-    urls = [
-        linea.strip() for linea in ruta_urls.read_text(encoding="utf-8").splitlines()
-        if linea.strip()
-    ]
+    filas = leer_filas_excel(ruta_excel)
 
-    print(f"Se encontraron {len(urls)} URLs en {ruta_urls}")
+    print(f"Se encontraron {len(filas)} filas con URL en {ruta_excel}")
     print(f"Espacio libre actual: {espacio_libre_gb(carpeta_destino):.2f} GB")
     print(f"Mínimo requerido para continuar: {args.min_gb} GB\n")
 
@@ -122,22 +150,22 @@ def main():
     fallidos = 0
     log_errores = carpeta_destino / "errores.log"
 
-    for i, url in enumerate(urls, start=1):
+    for i, (titulo, url) in enumerate(filas, start=1):
         libre = espacio_libre_gb(carpeta_destino)
         if libre < args.min_gb:
             print(f"\n⚠ Espacio en disco insuficiente ({libre:.2f} GB libres). "
-                  f"Deteniendo el proceso en la URL {i}/{len(urls)}.")
+                  f"Deteniendo el proceso en la fila {i}/{len(filas)}.")
             break
 
-        nombre = nombre_archivo_desde_url(url, i)
+        nombre = nombre_archivo_desde_titulo(titulo, i)
         destino_archivo = carpeta_destino / nombre
 
         if destino_archivo.exists():
-            print(f"[{i}/{len(urls)}] Ya existe, se omite: {nombre}")
+            print(f"[{i}/{len(filas)}] Ya existe, se omite: {nombre}")
             exitosos += 1
             continue
 
-        print(f"[{i}/{len(urls)}] Descargando: {url}  ->  {nombre}")
+        print(f"[{i}/{len(filas)}] Descargando: {url}  ->  {nombre}")
 
         resultado = None
         for intento in range(1, args.reintentos + 2):
@@ -162,7 +190,7 @@ def main():
             with open(log_errores, "a", encoding="utf-8") as log:
                 log.write(f"{url}\tFALLO_DESCARGA\n")
 
-    print(f"\nResumen: {exitosos} descargados, {fallidos} fallidos de {len(urls)} totales.")
+    print(f"\nResumen: {exitosos} descargados, {fallidos} fallidos de {len(filas)} totales.")
     if log_errores.exists():
         print(f"Detalle de errores en: {log_errores}")
 
